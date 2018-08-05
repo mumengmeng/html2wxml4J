@@ -28,6 +28,7 @@ Html解析：Jsoup
 #### 安装和使用
 
  部署到服务器，按照html2wxml提供的组件版 使用方式只需要修改接口地址为部署项目的访问地址就可以了
+![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/011536_8d44cdaa_736.png "屏幕截图.png")
 
 #### 支持本项目
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/010534_680bf8af_736.png "屏幕截图.png")
