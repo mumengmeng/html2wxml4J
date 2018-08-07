@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>cn.jbolt</groupId>
   <artifactId>html2wxml4J</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>0.9.0-SNAPSHOT</version>
   <packaging>war</packaging>
    
    <properties>

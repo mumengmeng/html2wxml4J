@@ -74,7 +74,7 @@ public class MainConfig extends JFinalConfig {
 	}
 	
 	public static void main(String[] args) {
-		JFinal.start("WebRoot", 80, "/", 5);
+		JFinal.start("src/main/webapp", 80, "/", 5);
 	}
 	
 

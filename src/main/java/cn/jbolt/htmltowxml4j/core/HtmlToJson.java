@@ -7,7 +7,6 @@ import org.jsoup.select.Elements;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.codewaves.codehighlight.core.Highlighter;
 import com.jfinal.kit.StrKit;
 
 import cn.jbolt.htmltowxml4j.api.Params;
@@ -81,7 +80,7 @@ public class HtmlToJson {
 	 */
 	private JSONObject convertElementToJsonObject(Element element, boolean needClass) {
 		//如果这个元素没有内容 忽略掉
-		if (element.hasText() == false && element.selectFirst("img") == null&&element.hasAttr("style")==false) {
+		if (elementIsEmpty(element)) {
 			return null;
 		}
 		String tag = element.tagName().toLowerCase();
@@ -103,6 +102,21 @@ public class HtmlToJson {
 		return eleJsonObj;
 	}
 	/**
+	 * 判断空元素
+	 * 条件是 没有文本型内容 不包含图片、视频、音频数据、还没有Style或者class的标签
+	 * @param element
+	 * @return
+	 */
+	private boolean elementIsEmpty(Element element) {
+		return element.hasText() == false && 
+			   element.selectFirst("img") == null&&
+			   element.selectFirst("video") == null&&
+			   element.selectFirst("audio") == null&&
+			   element.hasAttr("style")==false&&
+			   element.hasAttr("class")==false;
+	}
+
+	/**
 	 * 处理主要的tab type attr a和img特殊处理href和src
 	 * @param element
 	 * @param tag
@@ -115,8 +129,66 @@ public class HtmlToJson {
 			processTagA(eleJsonObj, element);
 		} else if (tag.equals("img")) {
 			processTagImg(eleJsonObj, element);
+		} else if (tag.equals("video")||tag.equals("audio")) {
+			processTagVideoOrAudio(eleJsonObj,tag, element);
 		} 
 	}
+	/**
+	 * 处理Video标签或者audio标签
+	 * @param node
+	 * @param element
+	 */
+	private void processTagVideoOrAudio(JSONObject node,String tag, Element element) {
+		JSONObject attr = new JSONObject();
+		String src=element.attr("src");
+		if(needAbsUrl){
+			if(src.startsWith("http")){
+				attr.put("src",src );
+			}else{
+				attr.put("src", element.absUrl("src"));
+			}
+		}else{
+			attr.put("src",src );
+		}
+		
+		if(element.hasAttr("controls")){
+			attr.put("controls","controls");
+		}
+		if(element.hasAttr("autoplay")){
+			attr.put("autoplay","autoplay");
+		}
+		if(element.hasAttr("loop")){
+			attr.put("loop","loop");
+		}
+		if(element.hasAttr("muted")&&tag.equals("video")){
+			attr.put("muted","muted");
+		}
+		if(tag.equals("audio")){
+			if(element.hasAttr("name")){
+				attr.put("name", element.attr("name"));
+			}
+			if(element.hasAttr("author")){
+				attr.put("author", element.attr("author"));
+			}
+		}
+		
+		if(element.hasAttr("poster")){
+			String poster=element.attr("poster");
+			if(needAbsUrl){
+				if(src.startsWith("http")){
+					attr.put("poster",poster);
+				}else{
+					attr.put("poster", element.absUrl("poster"));
+				}
+			}else{
+				attr.put("poster",poster);
+			}
+		}
+		
+		node.put("attr", attr);
+	}
+	
+
 	/**
 	 * 处理代码高亮
 	 * @param eleJsonObj
