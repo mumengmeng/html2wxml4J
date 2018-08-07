@@ -18,8 +18,8 @@
 
 
 #### TODO List
-1、实现pre标签代码高亮，计划使用Highlight.js 的Java版实现
-2、实现video和audio标签解析
+实现pre标签代码高亮，计划使用Highlight.js 的Java版实现
+
 
 #### 第三方库
 Html解析：Jsoup
