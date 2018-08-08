@@ -5,10 +5,17 @@
 基于JFinal+Jsoup+FastJson
 
 #### 实现功能
-目前仅实现解析Html并转换成JSON，将生成的JSON通过接口访问返回给微信小程序端，
+目前仅实现解析Html并转换成JSON，将生成的JSON通过接口访问返回给微信小程序端
+
 微信小程序端使用html2wxml组件版 按照html2wxml教程配置即可
+
+html大部分标签已经支持，Video、Audio标签已经支持
+
 HtmlToJson.java 核心工具类 使用FastJson
 
+Pre标签里的代码支持代码着色高亮显示
+
+![输入图片说明](https://images.gitee.com/uploads/images/2018/0808/104929_6d49305c_736.png "code.png")
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/005847_9030e7e4_736.png "屏幕截图.png")
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/005924_0d71b43d_736.png "屏幕截图.png")
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/005954_3727c431_736.png "屏幕截图.png")
@@ -18,9 +25,6 @@ HtmlToJson.java 核心工具类 使用FastJson
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0806/005352_8c4d2cf6_736.png "屏幕截图.png")
 ![输入图片说明](https://images.gitee.com/uploads/images/2018/0807/124214_d2e59467_736.png "屏幕截图.png")
 
-
-#### TODO List
-实现pre标签代码高亮，计划使用Highlight.js 的Java版实现
 
 
 #### 第三方库
