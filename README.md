@@ -2,6 +2,7 @@
 
 #### 项目介绍
 微信小程序端 [html2wxml](https://gitee.com/qwqoffice/html2wxml) 转换接口 Java版
+微信小程序Java版富文本渲染解决方案
 基于JFinal+Jsoup+FastJson
 
 #### 实现功能
