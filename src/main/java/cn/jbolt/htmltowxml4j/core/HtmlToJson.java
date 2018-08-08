@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.DataNode;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
@@ -37,6 +38,7 @@ public class HtmlToJson {
 		this.params=params;
 		this.idx = 0;
 		this.needAbsUrl=StrKit.notBlank(params.getBaseUri());
+		this.clean();
 	}
 	
 
@@ -52,9 +54,9 @@ public class HtmlToJson {
 		try {
 			//判断是否需要绝对路径URL
 			if (needAbsUrl) {
-				document = Jsoup.parse(html, params.getBaseUri());
+				document = Jsoup.parseBodyFragment(html, params.getBaseUri());
 			} else {
-				document = Jsoup.parse(html);
+				document = Jsoup.parseBodyFragment(html);
 			}
 		} finally {
 			if (document == null) {
@@ -63,7 +65,7 @@ public class HtmlToJson {
 		}
 		//以前使用Element元素会把无标签包裹的textNode节点给抛弃，这里改为选用Node节点实现
 		//Node节点可以将一段html的所有标签和无标签文本区分 都转为Node
-		List<Node> nodes = document.selectFirst("body").childNodes();
+		List<Node> nodes = document.body().childNodes();
 		//如果获取的Node为空 直接返回Null不处理
 		if(nodes.isEmpty()){
 			return null;
@@ -89,6 +91,22 @@ public class HtmlToJson {
 	public boolean isTextNode(String tag){
 		return "#text".equals(tag);
 	}
+	/**
+	 * 判断是否为script tag标签节点
+	 * @param tag
+	 * @return
+	 */
+	public boolean isScriptNode(String tag){
+		return "script".equals(tag);
+	}
+	/**
+	 * 判断是否为DateNode
+	 * @param tag
+	 * @return
+	 */
+	public boolean isDataNode(String tag){
+		return "#data".equals(tag);
+	}
 
 
 	/**
@@ -98,32 +116,59 @@ public class HtmlToJson {
 	 * @return
 	 */
 	private JSONObject convertNodeToJsonObject(Node node,String tag, boolean needClass) {
+		/*if(isScriptNode(tag)){
+			return null;
+		}*/
 		if(isTextNode(tag)){
 			return processTextNode(tag, ((TextNode)node).getWholeText());
 		}
+		if(isDataNode(tag)){
+			return processDataNode(tag, ((DataNode)node).getWholeData());
+		}
 		//后面用Element操作更方便一点 转一下
-		Element element=(Element) node;
+		
 		//如果这个元素没有内容 忽略掉
 		/*if (elementIsEmpty(element)) {
 			return null;
 		}*/
 		JSONObject eleJsonObj = new JSONObject();
 		if(tag.equals("pre")){
+			Element element=(Element) node;
 			processTagPre(eleJsonObj, element);
 		}else{
 			// 1、处理主要的tag type attr
-			processMain(element, tag, eleJsonObj);
+			if(isTextNode(tag)||isDataNode(tag)||isCommentNode(tag)){
+				eleJsonObj.put("tag", "#text");
+				eleJsonObj.put("type", "inline");
+			}else{
+				Element element=(Element) node;
+				processMain(element, tag, eleJsonObj);
+			}
 			// 2、处理Style
-			processStyle(element, tag, eleJsonObj);
+			processStyle(node, tag, eleJsonObj);
 			if(needClass){
-				processClass(element, tag, eleJsonObj);
+				processClass(node, tag, eleJsonObj);
 			}
 			// 3、处理子节点
-			processChildNodes(element, tag, eleJsonObj,needClass);
+			processChildNodes(node, tag, eleJsonObj,needClass);
 		}
 		
 		return eleJsonObj;
 	}
+	/**
+	 * 是否是注释
+	 * @param tag
+	 * @return
+	 */
+	private boolean isCommentNode(String tag) {
+		return "#comment".equals(tag);
+	}
+
+	private JSONObject processDataNode(String tag, String data) {
+		//暂不实现
+		return null;
+	}
+
 	private JSONObject processTextNode(String tag,String text) {
 		JSONObject jsonObject=new JSONObject();
 		String line=System.lineSeparator();
@@ -233,11 +278,11 @@ public class HtmlToJson {
 		node.put("attr", attr);
 		//使用highlighter库 将代码进行高亮转换
 		final Highlighter highlighter = new Highlighter(new RendererFactory());
-//		System.out.println(element.html());
 		final Highlighter.HighlightResult result = highlighter.highlightAuto(element.html(), null);
 		final CharSequence styledCode = result.getResult();
-		element.html(styledCode.toString());
-//		System.out.println(element.html());
+		if(styledCode!=null){
+			element.html(styledCode.toString());
+		}
 		// 处理Class
 		processClass(element, "pre", node);
 		//pre标签里的代码内容 需要创建ol和li去包裹每一行转换后的代码 行号
@@ -323,9 +368,11 @@ public class HtmlToJson {
 				if(isTextNode(tag)){
 					processMutilTextNode(jsonNodes,tag,((TextNode)node).getWholeText());
 				}else{
-					jsonObject=convertNodeToJsonObject(node, node.nodeName(), true);
-					if(jsonObject!=null){
-						jsonNodes.add(jsonObject);
+					if(isNotNullSpan(node)){
+						jsonObject=convertNodeToJsonObject(node, node.nodeName(), true);
+						if(jsonObject!=null){
+							jsonNodes.add(jsonObject);
+						}
 					}
 				}
 				
@@ -333,6 +380,10 @@ public class HtmlToJson {
 			liNode.put("nodes", jsonNodes);
 		}
 	}
+	private boolean isNotNullSpan(Node node) {
+		return !(node.hasAttr("class")&&node.attr("class").equals("null"));
+	}
+
 	/**
 	 * 处理textNode类型的节点 里面可能带着左侧空格的 都需要把空格转为空格节点
 	 * @param jsonNodes
@@ -358,9 +409,9 @@ public class HtmlToJson {
 	 * @param tag
 	 * @param eleJsonObj
 	 */
-	private void processStyle(Element element, String tag, JSONObject eleJsonObj) {
-		if (element.hasAttr("style")) {
-			String style = element.attr("style");
+	private void processStyle(Node node, String tag, JSONObject eleJsonObj) {
+		if (node.hasAttr("style")) {
+			String style = node.attr("style");
 			if (StrKit.notBlank(style)) {
 				JSONObject attr = eleJsonObj.getJSONObject("attr");
 				if (attr == null) {
@@ -373,13 +424,13 @@ public class HtmlToJson {
 	}
 	/**
 	 * 处理class属性
-	 * @param element
+	 * @param node
 	 * @param tag
 	 * @param eleJsonObj
 	 */
-	private void processClass(Element element, String tag, JSONObject eleJsonObj) {
-		if (element.hasAttr("class")) {
-			String style = element.attr("class");
+	private void processClass(Node node, String tag, JSONObject eleJsonObj) {
+		if (node.hasAttr("class")) {
+			String style = node.attr("class");
 			if (StrKit.notBlank(style)) {
 				JSONObject attr = eleJsonObj.getJSONObject("class");
 				if (attr == null) {
@@ -397,11 +448,11 @@ public class HtmlToJson {
 	 * @param eleJsonObj
 	 * @param needClass 
 	 */
-	private void processChildNodes(Element element, String tag, JSONObject eleJsonObj, boolean needClass) {
+	private void processChildNodes(Node node, String tag, JSONObject eleJsonObj, boolean needClass) {
 		if (tag.toLowerCase().equals("img")) {
 			return;
 		}
-		List<Node> sonNodes = element.childNodes();
+		List<Node> sonNodes = node.childNodes();
 		JSONArray nodes = new JSONArray();
 		if (sonNodes.isEmpty()==false) {
 			JSONObject soneleJsonObj = null;
@@ -410,6 +461,7 @@ public class HtmlToJson {
 				if (soneleJsonObj != null) {
 					nodes.add(soneleJsonObj);
 				}
+				
 			}
 		}
 		eleJsonObj.put("nodes", nodes);
@@ -457,6 +509,13 @@ public class HtmlToJson {
 		node.put("attr", attr);
 		node.put("idx", idx);
 		idx++;
+	}
+	/**
+	 * 处理不安全html返回安全html
+	 * @return
+	 */
+	private void clean() {
+		//TODO 这里可以在执行转换前过滤数据
 	}
 
 }
