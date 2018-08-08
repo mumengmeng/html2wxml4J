@@ -1,12 +1,17 @@
 package cn.jbolt.htmltowxml4j.core;
 
+import java.util.Collections;
+import java.util.List;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.codewaves.codehighlight.core.Highlighter;
 import com.jfinal.kit.StrKit;
 
 import cn.jbolt.htmltowxml4j.api.Params;
@@ -45,6 +50,7 @@ public class HtmlToJson {
 		}
 		Document document = null;
 		try {
+			//判断是否需要绝对路径URL
 			if (needAbsUrl) {
 				document = Jsoup.parse(html, params.getBaseUri());
 			} else {
@@ -55,35 +61,52 @@ public class HtmlToJson {
 				return null;
 			}
 		}
-		Elements elements = document.selectFirst("body").children();
-		if(elements.isEmpty()){
+		//以前使用Element元素会把无标签包裹的textNode节点给抛弃，这里改为选用Node节点实现
+		//Node节点可以将一段html的所有标签和无标签文本区分 都转为Node
+		List<Node> nodes = document.selectFirst("body").childNodes();
+		//如果获取的Node为空 直接返回Null不处理
+		if(nodes.isEmpty()){
 			return null;
 		}
+		//整个HTML转为JSON其实是转为一个JSON数组传递给前端html2wxml组件模板 循环解析
 		JSONArray array = new JSONArray();
 		JSONObject jsonObject = null;
-		for (Element element : elements) {
-			boolean needClass=element.tagName().toLowerCase().equals("pre");
-			jsonObject = convertElementToJsonObject(element,needClass);
+		String tag=null;
+		for (Node node : nodes) {
+			tag=node.nodeName().toLowerCase();
+			jsonObject = convertNodeToJsonObject(node,tag,"pre".equals(tag));
 			if (jsonObject != null) {
 				array.add(jsonObject);
 			}
 		}
-
 		return array.toJSONString();
 	}
-	
+	/**
+	 * 判断是否为TextNode
+	 * @param tag
+	 * @return
+	 */
+	public boolean isTextNode(String tag){
+		return "#text".equals(tag);
+	}
+
+
 	/**
 	 * 将一个节点元素转为JsonObject
 	 * @param element
 	 * @param needClass 
 	 * @return
 	 */
-	private JSONObject convertElementToJsonObject(Element element, boolean needClass) {
-		//如果这个元素没有内容 忽略掉
-		if (elementIsEmpty(element)) {
-			return null;
+	private JSONObject convertNodeToJsonObject(Node node,String tag, boolean needClass) {
+		if(isTextNode(tag)){
+			return processTextNode(tag, ((TextNode)node).getWholeText());
 		}
-		String tag = element.tagName().toLowerCase();
+		//后面用Element操作更方便一点 转一下
+		Element element=(Element) node;
+		//如果这个元素没有内容 忽略掉
+		/*if (elementIsEmpty(element)) {
+			return null;
+		}*/
 		JSONObject eleJsonObj = new JSONObject();
 		if(tag.equals("pre")){
 			processTagPre(eleJsonObj, element);
@@ -101,6 +124,14 @@ public class HtmlToJson {
 		
 		return eleJsonObj;
 	}
+	private JSONObject processTextNode(String tag,String text) {
+		JSONObject jsonObject=new JSONObject();
+		String line=System.lineSeparator();
+		jsonObject.put("tag", tag);
+		jsonObject.put("text", text.replaceAll(line+"|\r|\n", ""));
+		return jsonObject;
+	}
+
 	/**
 	 * 判断空元素
 	 * 条件是 没有文本型内容 不包含图片、视频、音频数据、还没有Style或者class的标签
@@ -191,30 +222,135 @@ public class HtmlToJson {
 
 	/**
 	 * 处理代码高亮
-	 * @param eleJsonObj
+	 * @param node
 	 * @param element
 	 */
 	private void processTagPre(JSONObject node, Element element) {
 		node.put("tag", "pre");
-		node.put("type", element.isBlock() ? "block" : "inline");
+		node.put("type", "block");
 		JSONObject attr = new JSONObject();
 		attr.put("class", "hljs");
 		node.put("attr", attr);
-		
-		/*final Highlighter highlighter = new Highlighter(new RendererFactory());
-		System.out.println(element.text());
-		final Highlighter.HighlightResult result = highlighter.highlightAuto(element.text(), null);
+		//使用highlighter库 将代码进行高亮转换
+		final Highlighter highlighter = new Highlighter(new RendererFactory());
+//		System.out.println(element.html());
+		final Highlighter.HighlightResult result = highlighter.highlightAuto(element.html(), null);
 		final CharSequence styledCode = result.getResult();
-		System.out.println("=====================styledCode======================");
 		element.html(styledCode.toString());
-		System.out.println(element.outerHtml());*/
-		//暂时没调整好highlighter 等后续优化
-		String code=element.text();
-		element.html(code);
+//		System.out.println(element.html());
 		// 处理Class
 		processClass(element, "pre", node);
-		processChildNodes(element, "pre", node,true);
+		//pre标签里的代码内容 需要创建ol和li去包裹每一行转换后的代码 行号
+		JSONObject olNode=new JSONObject();
+		olNode.put("tag", "ol");
+		olNode.put("type", "block");
+		JSONArray olArray=new JSONArray();
+		olArray.add(olNode);
+		node.put("nodes", olArray);
+		//从处理OL开始
+		processPreOl(element, olNode);
 	}
+	/**
+	 * 处理代码linenumbers
+	 * @param element
+	 * @param olNode
+	 */
+	private void processPreOl(Element element, JSONObject olNode) {
+		String html=element.html();
+		//拿到的代码需要按行分割字符串
+		String lines[] =html.split( System.lineSeparator());
+		//没有数据就put空list
+		if(lines!=null&&lines.length>0){
+			int size=lines.length;
+			JSONArray nodesArray=new JSONArray();
+			JSONObject liJsonObject=null;
+			//有数据 就逐行处理代码
+			for(int i=0;i<size;i++){
+				//目的就是一行li就是一个JSONObject 每个object的nodes就是他的子节点
+				liJsonObject=processPreLi(lines[i],i);
+				if(liJsonObject!=null){
+					nodesArray.add(liJsonObject);
+				}
+			}
+			olNode.put("nodes", nodesArray);
+		}else{
+			olNode.put("nodes", Collections.emptyList());
+		}
+		
+	}
+	/**
+	 * 处理每一行代码段
+	 * @param lineHtml
+	 * @param i
+	 * @return
+	 */
+	private JSONObject processPreLi(String lineHtml, int i) {
+		JSONObject liNode=new JSONObject();
+		liNode.put("tag", "li");
+		liNode.put("type", "block");
+		liNode.put("idx", i);
+		//开始处理nodes 找到子节点解析出来
+		JSONArray jsonNodes=new JSONArray();
+		//如果一行数据里开头是有一段空格 需要单独处理成空格Text tag
+		if(lineHtml.startsWith(" ")){
+			String trimtext=lineHtml.trim();
+			int index=lineHtml.indexOf(trimtext);
+			String whiteSpaces=lineHtml.substring(0,index);
+			lineHtml=lineHtml.substring(index);
+			processMutilTextNode(jsonNodes,"#text",whiteSpaces);
+		}
+		//剩下的数据 按照左侧无空格方式处理生成Nodes
+		processLiWithoutLeftWhiteSpace(lineHtml, liNode, jsonNodes);
+		//最终返回一个包装好的liNode
+		return liNode;
+		
+		
+	}
+	/**
+	 * 剩下的数据 按照左侧无空格方式处理生成Nodes
+	 * @param lineHtml
+	 * @param liNode
+	 * @param jsonNodes
+	 */
+	private void processLiWithoutLeftWhiteSpace(String lineHtml, JSONObject liNode, JSONArray jsonNodes) {
+		List<Node> nodes=Jsoup.parse(lineHtml).selectFirst("body").childNodes();
+		if(nodes.isEmpty()){
+			liNode.put("nodes", Collections.emptyList());
+		}else{
+			JSONObject jsonObject=null;
+			for(Node node:nodes){
+				String tag=node.nodeName();
+				if(isTextNode(tag)){
+					processMutilTextNode(jsonNodes,tag,((TextNode)node).getWholeText());
+				}else{
+					jsonObject=convertNodeToJsonObject(node, node.nodeName(), true);
+					if(jsonObject!=null){
+						jsonNodes.add(jsonObject);
+					}
+				}
+				
+			}
+			liNode.put("nodes", jsonNodes);
+		}
+	}
+	/**
+	 * 处理textNode类型的节点 里面可能带着左侧空格的 都需要把空格转为空格节点
+	 * @param jsonNodes
+	 * @param tag
+	 * @param wholeText
+	 */
+	private void processMutilTextNode(JSONArray jsonNodes,String tag,  String wholeText) {
+		if(wholeText.startsWith(" ")&&wholeText.length()>1&&StrKit.notBlank(wholeText)){
+			String trimText=wholeText.trim();
+			int index=wholeText.indexOf(trimText);
+			jsonNodes.add(processTextNode(tag, wholeText.substring(0,index)));
+			jsonNodes.add(processTextNode(tag, wholeText.substring(index)));
+		}else{
+			jsonNodes.add(processTextNode(tag, wholeText));
+		}
+	}
+
+	
 
 	/**
 	 * 处理style属性
@@ -265,23 +401,16 @@ public class HtmlToJson {
 		if (tag.toLowerCase().equals("img")) {
 			return;
 		}
-		Elements sonElements = element.children();
+		List<Node> sonNodes = element.childNodes();
 		JSONArray nodes = new JSONArray();
-		if (sonElements.isEmpty()==false) {
+		if (sonNodes.isEmpty()==false) {
 			JSONObject soneleJsonObj = null;
-			for (Element son : sonElements) {
-				soneleJsonObj = convertElementToJsonObject(son,needClass);
+			for (Node son : sonNodes) {
+				soneleJsonObj = convertNodeToJsonObject(son, son.nodeName(),needClass);
 				if (soneleJsonObj != null) {
 					nodes.add(soneleJsonObj);
 				}
-				son.remove();
 			}
-		}
-		if (element.hasText()) {
-			JSONObject textObj = new JSONObject();
-			textObj.put("tag", "#text");
-			textObj.put("text", element.text());
-			nodes.add(textObj);
 		}
 		eleJsonObj.put("nodes", nodes);
 	}

@@ -45,11 +45,11 @@ public class IndexController extends Controller {
 		//获取转换条件参数
 		Params params=getParams();
 		//执行转换 返回结果
-//		long startTime=System.currentTimeMillis();
+		long startTime=System.currentTimeMillis();
 		String resultJson=HtmlToJson.by(text,params).get();
-//		long endTime=System.currentTimeMillis();
-//		long useTime=endTime-startTime;
-//		System.out.println("耗时:"+useTime);
+		long endTime=System.currentTimeMillis();
+		long useTime=endTime-startTime;
+		System.out.println("耗时:"+useTime);
 		if(StrKit.isBlank(resultJson)){
 			renderJson(Collections.emptyList());
 		}else{
