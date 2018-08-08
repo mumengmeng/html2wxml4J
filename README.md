@@ -30,6 +30,7 @@ Pre标签里的代码支持代码着色高亮显示
 #### 第三方库
 Html解析：Jsoup
 接口编写：JFinal
+Json转换：FastJson
 
 #### 安装和使用
 
